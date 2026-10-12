@@ -1,0 +1,6 @@
+{
+  "name": "Bizim Dizimiz · Young Sheldon",
+  "description": "Ahmet ve sevgilisine ozel, Material 3 tasarimli Young Sheldon dizi izleme ve romantik izleme gecmisi platformu.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
