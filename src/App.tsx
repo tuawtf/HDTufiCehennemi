@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Episode } from './types';
 import { INITIAL_EPISODES } from './data/initialEpisodes';
+import { getEpisodesApi, addEpisodeApi, updateEpisodeApi, deleteEpisodeApi, resetEpisodesApi } from './api/episodeApi';
 import { MaterialTopAppBar } from './components/MaterialTopAppBar';
 import { MaterialNavBar } from './components/MaterialNavBar';
 import { VideoPlayerSection } from './components/VideoPlayerSection';
@@ -15,26 +16,33 @@ import { FloatingResumeFab } from './components/FloatingResumeFab';
 import { Sparkles } from 'lucide-react';
 
 export default function App() {
-  // Always dark mode per user request
+  // Always dark mode
   useEffect(() => {
     document.documentElement.classList.add('dark');
+    // Clear legacy episode caches so server JSON is always authoritative
+    localStorage.removeItem('hdtufi_episodes');
+    localStorage.removeItem('couple_episodes');
   }, []);
 
-  // Episodes state with localStorage
-  const [episodes, setEpisodes] = useState<Episode[]>(() => {
-    try {
-      const saved = localStorage.getItem('hdtufi_episodes');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {
-      // Fallback
-    }
-    return INITIAL_EPISODES;
-  });
+  // Episode list is loaded from server's data/episodes.json
+  const [episodes, setEpisodes] = useState<Episode[]>(INITIAL_EPISODES);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Simple watched episode IDs
+  // Load episodes from server-side episodes.json on mount
+  useEffect(() => {
+    let isMounted = true;
+    getEpisodesApi().then((serverEpisodes) => {
+      if (isMounted) {
+        setEpisodes(serverEpisodes);
+        setIsLoading(false);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // localStorage is strictly for personal "watched" status on this device
   const [watchedEpisodeIds, setWatchedEpisodeIds] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem('hdtufi_watched');
@@ -45,12 +53,12 @@ export default function App() {
     } catch {
       // Fallback
     }
-    return new Set(['ys-s1-e01']);
+    return new Set<string>();
   });
 
   // Current playing episode
   const [currentEpisodeId, setCurrentEpisodeId] = useState<string>(() => {
-    return episodes[0]?.id || 'ys-s1-e01';
+    return episodes[0]?.id || 's1-e01';
   });
 
   // Active navigation tab ('episodes' | 'admin')
@@ -59,12 +67,7 @@ export default function App() {
   // Toast notification state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Sync episodes to localStorage
-  useEffect(() => {
-    localStorage.setItem('hdtufi_episodes', JSON.stringify(episodes));
-  }, [episodes]);
-
-  // Sync watched state to localStorage
+  // Sync watched state ONLY to localStorage
   useEffect(() => {
     localStorage.setItem('hdtufi_watched', JSON.stringify(Array.from(watchedEpisodeIds)));
   }, [watchedEpisodeIds]);
@@ -120,19 +123,36 @@ export default function App() {
     });
   };
 
-  // Admin actions
-  const handleAddEpisode = (newEpisode: Episode) => {
-    setEpisodes((prev) => [...prev, newEpisode]);
+  // Admin actions (Connected to server-side episodes.json)
+  const handleAddEpisode = async (newEpisode: Episode) => {
+    const updated = await addEpisodeApi(newEpisode);
+    if (updated) {
+      setEpisodes(updated);
+    } else {
+      setEpisodes((prev) => [...prev, newEpisode]);
+    }
     setCurrentEpisodeId(newEpisode.id);
     setActiveTab('episodes');
+    showToast('Bölüm sunucudaki episodes.json dosyasına kaydedildi!');
   };
 
-  const handleUpdateEpisode = (updated: Episode) => {
-    setEpisodes((prev) => prev.map((ep) => (ep.id === updated.id ? updated : ep)));
+  const handleUpdateEpisode = async (updated: Episode) => {
+    const serverResult = await updateEpisodeApi(updated);
+    if (serverResult) {
+      setEpisodes(serverResult);
+    } else {
+      setEpisodes((prev) => prev.map((ep) => (ep.id === updated.id ? updated : ep)));
+    }
+    showToast('Bölüm sunucuda güncellendi!');
   };
 
-  const handleDeleteEpisode = (id: string) => {
-    setEpisodes((prev) => prev.filter((ep) => ep.id !== id));
+  const handleDeleteEpisode = async (id: string) => {
+    const serverResult = await deleteEpisodeApi(id);
+    if (serverResult) {
+      setEpisodes(serverResult);
+    } else {
+      setEpisodes((prev) => prev.filter((ep) => ep.id !== id));
+    }
     setWatchedEpisodeIds((prev) => {
       const next = new Set(prev);
       next.delete(id);
@@ -142,25 +162,36 @@ export default function App() {
       const remaining = episodes.filter((ep) => ep.id !== id);
       setCurrentEpisodeId(remaining[0].id);
     }
-    showToast('Bölüm başarıyla silindi.');
+    showToast('Bölüm sunucudan silindi.');
   };
 
-  const handleResetToDefault = () => {
-    setEpisodes(INITIAL_EPISODES);
-    setWatchedEpisodeIds(new Set(['ys-s1-e01']));
-    setCurrentEpisodeId(INITIAL_EPISODES[0].id);
-    showToast('Bölümler varsayılan listeye sıfırlandı.');
+  const handleResetToDefault = async () => {
+    const serverResult = await resetEpisodesApi();
+    if (serverResult) {
+      setEpisodes(serverResult);
+      setCurrentEpisodeId(serverResult[0]?.id || 's1-e01');
+    } else {
+      setEpisodes(INITIAL_EPISODES);
+      setCurrentEpisodeId(INITIAL_EPISODES[0]?.id || 's1-e01');
+    }
+    showToast('Sunucudaki episodes.json varsayılana sıfırlandı.');
   };
 
-  const handleImportData = (data: { episodes: Episode[]; watchedIds?: string[] }) => {
-    setEpisodes(data.episodes);
+  const handleImportData = async (data: { episodes: Episode[]; watchedIds?: string[] }) => {
+    if (Array.isArray(data.episodes)) {
+      for (const ep of data.episodes) {
+        await addEpisodeApi(ep);
+      }
+      const refreshed = await getEpisodesApi();
+      setEpisodes(refreshed);
+    }
     if (data.watchedIds) {
       setWatchedEpisodeIds(new Set(data.watchedIds));
     }
     if (data.episodes.length > 0) {
       setCurrentEpisodeId(data.episodes[0].id);
     }
-    showToast('Yedek başarıyla içe aktarıldı.');
+    showToast('Yedek başarıyla sunucuya kaydedildi.');
   };
 
   // Find next unwatched episode for FAB
@@ -187,6 +218,7 @@ export default function App() {
                 onToggleWatch={handleToggleWatch}
                 onSelectPrevious={handleSelectPrevious}
                 onSelectNext={handleSelectNext}
+                onOpenAdmin={() => setActiveTab('admin')}
                 hasPrevious={hasPrevious}
                 hasNext={hasNext}
               />

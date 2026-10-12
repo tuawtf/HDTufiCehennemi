@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Episode, VideoSourceType } from '../types';
-import { ShieldCheck, Plus, Trash2, Edit3, Download, Upload, RotateCcw, Check, AlertCircle } from 'lucide-react';
+import { ShieldCheck, Plus, Trash2, Edit3, Download, Upload, RotateCcw, Check, AlertCircle, Copy, Code2 } from 'lucide-react';
 
 interface AdminPanelSectionProps {
   episodes: Episode[];
@@ -23,17 +23,18 @@ export const AdminPanelSection: React.FC<AdminPanelSectionProps> = ({
 }) => {
   const [editingEpisodeId, setEditingEpisodeId] = useState<string | null>(null);
 
-  // Form states
+  // Form states (Default to Drive)
   const [season, setSeason] = useState<number>(1);
   const [episodeNumber, setEpisodeNumber] = useState<number>(episodes.length + 1);
   const [title, setTitle] = useState<string>('');
-  const [duration, setDuration] = useState<number>(21);
+  const [duration, setDuration] = useState<number>(45);
   const [videoUrl, setVideoUrl] = useState<string>('');
-  const [videoType, setVideoType] = useState<VideoSourceType>('direct');
+  const [videoType, setVideoType] = useState<VideoSourceType>('drive');
   const [description, setDescription] = useState<string>('');
   const [airDate, setAirDate] = useState<string>('');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showCodeExport, setShowCodeExport] = useState<boolean>(false);
 
   const startEdit = (episode: Episode) => {
     setEditingEpisodeId(episode.id);
@@ -54,6 +55,7 @@ export const AdminPanelSection: React.FC<AdminPanelSectionProps> = ({
     setDescription('');
     setVideoUrl('');
     setAirDate('');
+    setVideoType('drive');
     setEpisodeNumber(episodes.length + 1);
   };
 
@@ -67,7 +69,7 @@ export const AdminPanelSection: React.FC<AdminPanelSectionProps> = ({
     }
 
     if (!videoUrl.trim()) {
-      setErrorMessage('Lütfen bir video linki (MP4, YouTube, Drive veya Embed) giriniz.');
+      setErrorMessage('Lütfen Google Drive veya video linkini giriniz.');
       return;
     }
 
@@ -78,10 +80,10 @@ export const AdminPanelSection: React.FC<AdminPanelSectionProps> = ({
         season,
         episodeNumber,
         title: title.trim(),
-        duration: Number(duration) || 20,
+        duration: Number(duration) || 45,
         videoUrl: videoUrl.trim(),
         videoType,
-        description: description.trim() || 'Açıklama belirtilmedi.',
+        description: description.trim() || `Sezon ${season}, ${episodeNumber}. Bölüm`,
         airDate: airDate.trim() || undefined,
         addedAt: new Date().toISOString(),
       };
@@ -91,14 +93,14 @@ export const AdminPanelSection: React.FC<AdminPanelSectionProps> = ({
     } else {
       // Add new
       const newEp: Episode = {
-        id: `ys-s${season}-e${episodeNumber}-${Date.now()}`,
+        id: `s${season}-e${episodeNumber}-${Date.now()}`,
         season,
         episodeNumber,
         title: title.trim(),
-        duration: Number(duration) || 20,
+        duration: Number(duration) || 45,
         videoUrl: videoUrl.trim(),
         videoType,
-        description: description.trim() || 'Açıklama belirtilmedi.',
+        description: description.trim() || `Sezon ${season}, ${episodeNumber}. Bölüm`,
         airDate: airDate.trim() || undefined,
         addedAt: new Date().toISOString(),
       };
@@ -110,18 +112,11 @@ export const AdminPanelSection: React.FC<AdminPanelSectionProps> = ({
     setTimeout(() => setSuccessMessage(null), 4000);
   };
 
-  const fillSampleDirectLink = () => {
-    setVideoUrl('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4');
-    setVideoType('direct');
-    if (!title) setTitle('Örnek Young Sheldon Bölümü');
-    if (!description) setDescription('Sheldon ve Cooper ailesinin maceraları.');
-  };
-
-  const fillSampleYoutubeLink = () => {
-    setVideoUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
-    setVideoType('youtube');
-    if (!title) setTitle('YouTube Video Bağlantılı Bölüm');
-    if (!description) setDescription('YouTube üzerinden izlenecek bölüm video linki.');
+  const fillSampleDriveLink = () => {
+    setVideoUrl('https://drive.google.com/file/d/1exampleDriveFileId/view');
+    setVideoType('drive');
+    if (!title) setTitle(`${season}. Sezon ${episodeNumber}. Bölüm`);
+    if (!description) setDescription(`${season}. Sezon ${episodeNumber}. Bölüm Google Drive videosu.`);
   };
 
   const exportBackupJSON = () => {
@@ -137,6 +132,18 @@ export const AdminPanelSection: React.FC<AdminPanelSectionProps> = ({
     a.download = `hdtuficehennemi-yedek-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const copyInitialEpisodesCode = () => {
+    const code = `import { Episode } from '../types';\n\nexport const SHOW_TITLE = 'Dizi';\n\nexport const INITIAL_EPISODES: Episode[] = ${JSON.stringify(
+      episodes,
+      null,
+      2
+    )};\n`;
+    navigator.clipboard.writeText(code).then(() => {
+      setSuccessMessage('src/data/initialEpisodes.ts kod içeriği panoya kopyalandı!');
+      setTimeout(() => setSuccessMessage(null), 4000);
+    });
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -178,16 +185,25 @@ export const AdminPanelSection: React.FC<AdminPanelSectionProps> = ({
                 HDTufiCehennemi Yönetici Paneli
               </h2>
               <p className="text-xs sm:text-sm text-[#CAC4D0]">
-                Buradan yeni dizi bölümleri ekleyebilir, video linklerini güncelleyebilir ve içerikleri yönetebilirsiniz.
+                Bölüm listesi doğrudan <code className="text-[#D0BCFF]">src/data/initialEpisodes.ts</code> dosyasından okunur ve tüm cihazlarda aynı görünür.
               </p>
             </div>
           </div>
 
-          {/* Quick backup button */}
-          <div className="flex items-center gap-2">
+          {/* Quick Actions */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={copyInitialEpisodesCode}
+              title="Tüm cihazlarda kalıcı olması için dosya kodunu kopyalar"
+              className="px-3.5 py-2 text-xs font-semibold rounded-full bg-[#4F378B] hover:bg-[#5E43A1] text-[#EADDFF] flex items-center gap-1.5 transition-all shadow-sm"
+            >
+              <Copy className="w-3.5 h-3.5 text-[#D0BCFF]" />
+              <span>initialEpisodes.ts Kodunu Kopyala</span>
+            </button>
+
             <button
               onClick={exportBackupJSON}
-              className="px-4 py-2 text-xs font-semibold rounded-full bg-[#211F26] border border-[#49454F] hover:bg-[#2B2930] text-[#E6E0E9] flex items-center gap-1.5 transition-all shadow-sm"
+              className="px-3.5 py-2 text-xs font-semibold rounded-full bg-[#211F26] border border-[#49454F] hover:bg-[#2B2930] text-[#E6E0E9] flex items-center gap-1.5 transition-all shadow-sm"
             >
               <Download className="w-3.5 h-3.5 text-[#D0BCFF]" />
               <span>Yedek İndir (JSON)</span>
@@ -223,7 +239,7 @@ export const AdminPanelSection: React.FC<AdminPanelSectionProps> = ({
             ) : (
               <>
                 <Plus className="w-5 h-5 text-[#D0BCFF]" />
-                <span>Yeni Bölüm Ekle</span>
+                <span>Yeni Google Drive Bölümü Ekle</span>
               </>
             )}
           </h3>
@@ -279,7 +295,7 @@ export const AdminPanelSection: React.FC<AdminPanelSectionProps> = ({
                 min={1}
                 max={180}
                 value={duration}
-                onChange={(e) => setDuration(parseInt(e.target.value) || 20)}
+                onChange={(e) => setDuration(parseInt(e.target.value) || 45)}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-[#141218] border border-[#49454F] text-sm text-[#E6E0E9] focus:outline-none focus:ring-2 focus:ring-[#D0BCFF]"
                 required
               />
@@ -292,7 +308,7 @@ export const AdminPanelSection: React.FC<AdminPanelSectionProps> = ({
             </label>
             <input
               type="text"
-              placeholder="Örn: A Solar Calculator, a Game Ball..."
+              placeholder="Örn: 1. Bölüm veya Pilot..."
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl bg-[#141218] border border-[#49454F] text-sm text-[#E6E0E9] focus:outline-none focus:ring-2 focus:ring-[#D0BCFF]"
@@ -304,23 +320,15 @@ export const AdminPanelSection: React.FC<AdminPanelSectionProps> = ({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="block text-xs font-semibold text-[#CAC4D0]">
-                Video Kaynağı (URL / Embed Linki)
+                Google Drive Video Linki
               </label>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={fillSampleDirectLink}
+                  onClick={fillSampleDriveLink}
                   className="text-[11px] text-[#D0BCFF] hover:underline"
                 >
-                  + Örnek MP4
-                </button>
-                <span className="text-[#49454F]">·</span>
-                <button
-                  type="button"
-                  onClick={fillSampleYoutubeLink}
-                  className="text-[11px] text-[#D0BCFF] hover:underline"
-                >
-                  + Örnek YouTube
+                  + Örnek Drive Linki
                 </button>
               </div>
             </div>
@@ -328,7 +336,7 @@ export const AdminPanelSection: React.FC<AdminPanelSectionProps> = ({
             <div className="flex flex-col sm:flex-row gap-2.5">
               <input
                 type="url"
-                placeholder="https://.../video.mp4 veya YouTube/Drive linki"
+                placeholder="https://drive.google.com/file/d/FILE_ID/view"
                 value={videoUrl}
                 onChange={(e) => setVideoUrl(e.target.value)}
                 className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#141218] border border-[#49454F] text-sm text-[#E6E0E9] focus:outline-none focus:ring-2 focus:ring-[#D0BCFF]"
@@ -340,14 +348,14 @@ export const AdminPanelSection: React.FC<AdminPanelSectionProps> = ({
                 onChange={(e) => setVideoType(e.target.value as VideoSourceType)}
                 className="px-3.5 py-2.5 rounded-xl bg-[#141218] border border-[#49454F] text-xs font-medium text-[#E6E0E9] focus:outline-none focus:ring-2 focus:ring-[#D0BCFF]"
               >
-                <option value="direct">Doğrudan Video (MP4 / WebM)</option>
-                <option value="youtube">YouTube Bağlantısı</option>
-                <option value="drive">Google Drive Video</option>
-                <option value="embed">Gömülü Oyuncu (Iframe Embed)</option>
+                <option value="drive">Google Drive</option>
+                <option value="direct">Doğrudan Video (MP4)</option>
+                <option value="youtube">YouTube</option>
+                <option value="embed">Gömülü (Embed)</option>
               </select>
             </div>
             <p className="text-[11px] text-[#938F99]">
-              İpucu: Doğrudan video URL'leri (MP4), YouTube linkleri ve Drive önizleme bağlantıları otomatik olarak optimize edilir.
+              Google Drive bağlantıları (<code className="text-[#D0BCFF]">/view</code> veya <code className="text-[#D0BCFF]">/preview</code>) otomatik olarak gömülü tam ekran oynatıcıya çevrilir.
             </p>
           </div>
 
@@ -358,7 +366,7 @@ export const AdminPanelSection: React.FC<AdminPanelSectionProps> = ({
               </label>
               <textarea
                 rows={3}
-                placeholder="Bölümde neler yaşanıyor?"
+                placeholder="Bölüm özeti..."
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-[#141218] border border-[#49454F] text-sm text-[#E6E0E9] focus:outline-none focus:ring-2 focus:ring-[#D0BCFF]"
@@ -422,7 +430,7 @@ export const AdminPanelSection: React.FC<AdminPanelSectionProps> = ({
                   <h4 className="font-bold text-[#E6E0E9] text-sm">
                     {ep.title}
                   </h4>
-                  <p className="text-[11px] text-[#938F99] truncate max-w-md">
+                  <p className="text-[11px] text-[#938F99] truncate max-w-md font-mono">
                     {ep.videoUrl}
                   </p>
                 </div>
@@ -458,10 +466,10 @@ export const AdminPanelSection: React.FC<AdminPanelSectionProps> = ({
       <div className="p-6 rounded-3xl bg-[#1D1B20] border border-[#49454F] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h4 className="text-sm font-bold text-[#E6E0E9]">
-            Yedekleme ve Sıfırlama
+            initialEpisodes.ts Dosyasına Sıfırlama
           </h4>
           <p className="text-xs text-[#CAC4D0] mt-0.5">
-            Bölüm listenizi JSON olarak indirebilir veya varsayılan listeye sıfırlayabilirsiniz.
+            Bölümleri her zaman <code className="text-[#D0BCFF]">src/data/initialEpisodes.ts</code> dosyasındaki haline döndürebilirsiniz.
           </p>
         </div>
 
@@ -474,14 +482,14 @@ export const AdminPanelSection: React.FC<AdminPanelSectionProps> = ({
 
           <button
             onClick={() => {
-              if (window.confirm('Tüm bölümleri varsayılan Young Sheldon listesine sıfırlamak istiyor musunuz?')) {
+              if (window.confirm('Tüm bölümleri src/data/initialEpisodes.ts dosyasındaki orijinal haline getirmek istiyor musunuz?')) {
                 onResetToDefault();
               }
             }}
             className="px-4 py-2 text-xs font-semibold rounded-full bg-[#211F26] border border-[#49454F] hover:bg-rose-950/40 text-rose-400 flex items-center gap-1.5 transition-all"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>Varsayılana Sıfırla</span>
+            <span>Dosyadaki Listeye Sıfırla</span>
           </button>
         </div>
       </div>

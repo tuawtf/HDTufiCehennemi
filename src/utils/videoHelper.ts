@@ -4,6 +4,7 @@ export function resolveVideoSource(url: string, explicitType?: VideoSourceType):
   type: VideoSourceType;
   embedUrl?: string;
   directUrl?: string;
+  isPlaceholder?: boolean;
 } {
   const trimmed = url.trim();
 
@@ -17,15 +18,39 @@ export function resolveVideoSource(url: string, explicitType?: VideoSourceType):
   }
 
   // Google Drive detection
-  const driveMatch = trimmed.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
-  if (driveMatch && driveMatch[1]) {
+  const isDrive = explicitType === 'drive' || trimmed.includes('drive.google.com');
+  if (isDrive) {
+    const isPlaceholder = trimmed.includes('/file/d/.../view') || trimmed.includes('/file/d/.../preview') || trimmed.includes('...');
+    
+    // Extract file ID
+    const driveMatch = trimmed.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?id=)([a-zA-Z0-9_-]+)/);
+    if (driveMatch && driveMatch[1] && driveMatch[1] !== '...') {
+      return {
+        type: 'drive',
+        embedUrl: `https://drive.google.com/file/d/${driveMatch[1]}/preview`,
+        isPlaceholder: false,
+      };
+    }
+
+    // Direct /preview link check
+    if (trimmed.includes('/preview')) {
+      return {
+        type: 'drive',
+        embedUrl: trimmed,
+        isPlaceholder,
+      };
+    }
+
+    // Default replacement for /view
+    const converted = trimmed.replace(/\/view(\?.*)?$/, '/preview');
     return {
       type: 'drive',
-      embedUrl: `https://drive.google.com/file/d/${driveMatch[1]}/preview`,
+      embedUrl: converted.includes('/preview') ? converted : (trimmed ? `${trimmed}/preview` : ''),
+      isPlaceholder,
     };
   }
 
-  // Explicit or auto-detected direct video
+  // Direct video
   if (
     explicitType === 'direct' ||
     trimmed.endsWith('.mp4') ||
@@ -39,7 +64,7 @@ export function resolveVideoSource(url: string, explicitType?: VideoSourceType):
     };
   }
 
-  // Explicit embed iframe or fallback
+  // Generic embed
   if (explicitType === 'embed' || trimmed.startsWith('http')) {
     return {
       type: 'embed',
